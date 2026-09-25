@@ -93,7 +93,7 @@ jobs:
           # FIXME: Use a better tag, something like yyyymmdd-run_number
           TO_TAG: "${BUILD_NUMBER}"
         run: |
-          jf docker build -t "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}:${TO_TAG}"
+          jf docker build -t "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}:${TO_TAG}" -f dockerfile-base .
           jf docker push "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}:${TO_TAG}" --build-name="${BUILD_NAME}" --build-number="${BUILD_NUMBER}"
 
 # Gather deps and envs for build info
