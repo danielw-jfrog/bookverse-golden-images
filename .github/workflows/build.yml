@@ -40,8 +40,8 @@ jobs:
       contents: read  # Repository content access for source code
       id-token: write # OIDC token generation for JFrog authentication
     env:
-      BUILD_NAME="${{ github.event.repository.name }}_${{ github.workflow }}_${{ github.job }}"
-      BUILD_NUMBER="${{ github.run_number }}-${{ github.run_attempt }}"
+      BUILD_NAME: "${{ github.event.repository.name }}_${{ github.workflow }}_${{ github.job }}"
+      BUILD_NUMBER: "${{ github.run_number }}-${{ github.run_attempt }}"
     outputs:
       # FIXME: Validate these outputs
       build_name: ${{ steps.set-build-info.outputs.build_name }}
