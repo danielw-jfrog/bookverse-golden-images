@@ -24,9 +24,7 @@ on:
 
 env:
   JF_URL: ${{ vars.JFROG_URL }}
-  JF_ACCESS_TOKEN: ${{ secrets.JFROG_ADMIN_TOKEN }}
   JFROG_URL: ${{ vars.JFROG_URL }}
-  JFROG_ADMIN_TOKEN: ${{ secrets.JFROG_ADMIN_TOKEN }}
   GH_TOKEN: ${{ secrets.GH_TOKEN }}
   GH_REPOSITORY_OWNER: ${{ github.repository_owner }}
   JF_PROJECT: ${{ vars.PROJECT_KEY }}
