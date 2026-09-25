@@ -1,0 +1,916 @@
+name: Build Image
+
+concurrency:
+  group: ci-${{ vars.PROJECT_KEY }}-${{ github.repository }}
+  cancel-in-progress: true
+
+# FIXME: Add a cron job to build this every so often (maybe once a week?)
+on:
+  #push:
+  #  branches: [main]
+
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual CI trigger'
+        required: false
+        default: 'Manual testing'
+        type: string
+      force_app_version:
+        description: 'Force application version creation (override commit filter)'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  JF_URL: ${{ vars.JFROG_URL }}
+  JF_ACCESS_TOKEN: ${{ secrets.JFROG_ADMIN_TOKEN }}
+  JFROG_URL: ${{ vars.JFROG_URL }}
+  JFROG_ADMIN_TOKEN: ${{ secrets.JFROG_ADMIN_TOKEN }}
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+  GH_REPOSITORY_OWNER: ${{ github.repository_owner }}
+  JF_PROJECT: ${{ vars.PROJECT_KEY }}
+
+jobs:
+  build-base-image:
+    name: "Build Base Golden Image"
+    runs-on: ubuntu-latest
+    permissions:
+      # FIXME: Validate these permissions
+      contents: read  # Repository content access for source code
+      id-token: write # OIDC token generation for JFrog authentication
+    env:
+      BUILD_NAME="${{ github.event.repository.name }}_${{ github.workflow }}_${{ github.job }}"
+      BUILD_NUMBER="${{ github.run_number }}-${{ github.run_attempt }}"
+    outputs:
+      # FIXME: Validate these outputs
+      build_name: ${{ steps.set-build-info.outputs.build_name }}
+      build_started_timestamp: ${{ steps.publish-build-info.outputs.build_started_timestamp }}
+      build_number: ${{ steps.set-build-info.outputs.build_number }}
+      app_version: ${{ steps.determine-semver.outputs.app_version }}
+      coverage_percent: ${{ steps.test-coverage.outputs.coverage_percent }}
+    steps:
+      - name: Checkout Source Repository
+        uses: actions/checkout@v7
+
+      # FIXME: Get this to pull from Artifactory via a pypi remote repository
+      - name: Configure Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Configure JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v5
+        id: jfrog-cli-auth
+        with:
+          version: 2.121.0
+          # FIXME: This needs to be updated for one for the golden images
+          oidc-provider-name: bvgi-golden-images-github
+          oidc-audience: ${{ vars.JFROG_URL }}
+
+      - name: Install the Python dependencies
+        run: |
+          jf pip-config --repo-resolve "bvgi-pypi-remote"
+          jf pip install -r requirements.txt --build-name="${BUILD_NAME}" --build-number="${BUILD_NUMBER}"
+
+      #- name: Docker Registry Authentication
+      #  uses: docker/login-action@v4
+      #  with:
+      #    registry: ${{ vars.JFROG_URL }}
+      #    username: ${{ steps.jfrog-cli-auth.outputs.oidc-user }}
+      #    password: ${{ steps.jfrog-cli-auth.outputs.oidc-token }}
+
+      #- name: "[Setup] Checkout bookverse-infra for shared scripts"
+      #  uses: actions/checkout@v4
+      #  with:
+      #    repository: tomjfrog/bookverse-infra
+      #    path: bookverse-infra
+
+      #- name: "[Info] Trigger Information"
+      #  run: |
+      #    echo "🚀 CI Pipeline: Build & Test Phase"
+      #    echo "📋 Commit Analysis Result: ${{ needs.analyze-commit.outputs.commit_type }}"
+      #    echo "💡 Decision: ${{ needs.analyze-commit.outputs.decision_reason }}"
+      #    echo "🎯 Create App Version: ${{ needs.analyze-commit.outputs.create_app_version }}"
+      #    echo "👤 Triggered by: ${{ github.actor }}"
+      #    echo "🕐 Timestamp: $(date -u)"
+
+      #- name: "[Setup] Build Info"
+      #  id: set-build-info
+      #  run: |
+      #    BUILD_NAME="${{ github.event.repository.name }}_${{ github.workflow }}_${{ github.job }}"
+      #    BUILD_NUMBER="${{ github.run_number }}-${{ github.run_attempt }}"
+      #    echo "BUILD_NAME=$BUILD_NAME" >> $GITHUB_ENV
+      #    echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
+      #    echo "build_name=$BUILD_NAME" >> $GITHUB_OUTPUT
+      #    echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+      #    echo "SERVICE_NAME=checkout" >> $GITHUB_ENV
+      #    echo "APPLICATION_KEY=bookverse-checkout" >> $GITHUB_ENV
+
+      #- name: "[Setup] Extract OIDC Token from JFrog CLI"
+      #  id: extract-token
+      #  run: |
+      #    echo "🔍 Extracting OIDC token from JFrog CLI step output..."
+      #    
+      #    OIDC_TOKEN="${{ steps.jfrog-cli-auth.outputs.oidc-token }}"
+      #    if [[ -n "$OIDC_TOKEN" && "$OIDC_TOKEN" != "null" ]]; then
+      #      echo "✅ Successfully retrieved OIDC token from JFrog CLI step output (oidc-token)"
+      #      echo "📋 Token length: ${#OIDC_TOKEN}"
+      #    else
+      #      echo "❌ OIDC token not available from JFrog CLI step output (oidc-token)"
+      #      exit 1
+      #    fi
+      #    
+      #    echo "oidc_token=$OIDC_TOKEN" >> $GITHUB_OUTPUT
+
+      #- name: "[Setup] Install Python dependencies"
+      #  run: |
+      #    echo "📦 Installing Python dependencies from JFrog PyPI"
+      #    pip install --upgrade pip
+
+      #- name: "[Setup] Determine SemVer"
+      #  id: determine-semver
+      #  run: |
+      #    set -euo pipefail
+      #    SERVICE_NAME=${SERVICE_NAME:-$(echo ${{ github.event.repository.name }} | sed 's/bookverse-//')}
+      #    APPLICATION_KEY="bookverse-$SERVICE_NAME"
+
+      #    echo "🔍 Using OIDC token directly from JFrog CLI step output for semver determination..."
+
+      #    OIDC_TOKEN="${{ steps.jfrog-cli-auth.outputs.oidc-token }}"
+      #    if [[ -z "$OIDC_TOKEN" ]]; then
+      #      echo "❌ OIDC token not available from JFrog CLI step" >&2
+      #      exit 1
+      #    fi
+
+      #    echo "✅ OIDC token available from JFrog CLI step"
+      #    echo "📋 Token length: ${#OIDC_TOKEN}"
+      #    echo "📋 Using shared semver logic from bookverse-infra"
+
+      #    INFRA_SCRIPTS_PATH="bookverse-infra/libraries/bookverse-devops/scripts"
+      #    if [[ -f "$INFRA_SCRIPTS_PATH/determine-semver.sh" ]]; then
+      #      cp "$INFRA_SCRIPTS_PATH/determine-semver.sh" .
+      #      cp "$INFRA_SCRIPTS_PATH/semver_versioning.py" .
+      #      chmod +x determine-semver.sh
+      #      echo "✅ Using shared semver scripts from bookverse-infra"
+      #    else
+      #      echo "❌ Shared semver scripts not found in bookverse-infra at $INFRA_SCRIPTS_PATH" >&2
+      #      exit 1
+      #    fi
+
+      #    SEMVER_OUTPUT=$(./determine-semver.sh \
+      #      --application-key "$APPLICATION_KEY" \
+      #      --version-map "./config/version-map.yaml" \
+      #      --jfrog-url "${{ vars.JFROG_URL }}" \
+      #      --jfrog-token "$OIDC_TOKEN" \
+      #      --project-key "${{ vars.PROJECT_KEY }}" \
+      #      --packages "$SERVICE_NAME" \
+      #      --verbose)
+
+      #    APP_VERSION=$(echo "$SEMVER_OUTPUT" | grep '{"application_key"' | jq -r '.app_version')
+      #    if [[ -z "$APP_VERSION" || "$APP_VERSION" == "null" ]]; then
+      #      echo "❌ Failed to extract APP_VERSION from semver output" >&2
+      #      exit 1
+      #    fi
+
+      #    DOCKER_TAG_VAR="DOCKER_TAG_$(echo "$SERVICE_NAME" | tr '[:lower:]' '[:upper:]' | tr '-' '_')"
+      #    if [[ -n "${!DOCKER_TAG_VAR:-}" ]]; then
+      #      IMAGE_TAG="${!DOCKER_TAG_VAR}"
+      #    else
+      #      IMAGE_TAG="$APP_VERSION"
+      #    fi
+
+      #    REGISTRY_URL="${{ vars.DOCKER_REGISTRY }}"
+      #    REPO_KEY="${{ vars.PROJECT_KEY }}-$SERVICE_NAME-internal-docker-dev-local"
+      #    IMAGE_NAME="$REGISTRY_URL/$REPO_KEY/$SERVICE_NAME:$IMAGE_TAG"
+
+      #    echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+      #    echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+      #    echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+      #    echo "app_version=$APP_VERSION" >> $GITHUB_OUTPUT
+      #    echo "oidc_token=$OIDC_TOKEN" >> $GITHUB_OUTPUT
+      #    echo "APPLICATION_KEY=$APPLICATION_KEY" >> $GITHUB_ENV
+      #    echo "JF_OIDC_TOKEN=$OIDC_TOKEN" >> $GITHUB_ENV
+
+      #    echo "OPENAPI_VERSION_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+      #    echo "CONTRACT_VERSION_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+      #- name: "[Setup] JFrog Environment (Consolidated)"
+      #  run: |
+      #    echo "🔧 Setting up consolidated JFrog environment for all subsequent steps"
+      #    echo "JF_PROJECT=${{ vars.PROJECT_KEY }}" >> $GITHUB_ENV
+      #    echo "JFROG_CLI_BUILD_PROJECT=${{ vars.PROJECT_KEY }}" >> $GITHUB_ENV
+      #    echo "JFROG_CLI_BUILD_NAME=$BUILD_NAME" >> $GITHUB_ENV
+      #    echo "JFROG_CLI_BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
+
+      #- name: "[Diag] Python deps (Optimized)"
+      #  run: |
+      #    set -euo pipefail
+      #    echo "🔎 Checking Artifactory connectivity and PyPI virtual repo"
+
+      #    jf rt ping || true
+
+      #    curl -sS -L -X GET "${{ vars.JFROG_URL }}/api/repositories/${{ vars.PROJECT_KEY }}-pypi-virtual" \
+      #      -H "Authorization: Bearer $JF_OIDC_TOKEN" \
+      #      -H "Accept: application/json" 2>/dev/null || echo "PyPI virtual repo check failed"
+
+      #    jf pipc --repo-resolve "${{ vars.PROJECT_KEY }}-pypi-virtual"
+
+      #    export PIP_DISABLE_PIP_VERSION_CHECK=1
+      #    export PIP_NO_INPUT=1
+      #    python -m pip --version
+      #    python -m pip debug -v || true
+
+      #- name: "[Test] Install deps (Optimized with bookverse-core)"
+      #  run: |
+      #    set -euo pipefail
+
+      #    python -m pip install --upgrade "pip<25"
+
+      #    pip install --no-cache-dir ./libs/bookverse-core
+      #    echo "✅ Installed bookverse-core from local libs"
+
+      #    echo "📦 Installing dependencies using explicit package list to avoid build-info issues..."
+      #    jf pipc --repo-resolve "${{ vars.PROJECT_KEY }}-pypi-virtual"
+
+      #    jf pip install --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER" \
+      #      fastapi==0.111.0 \
+      #      uvicorn==0.30.0 \
+      #      httpx==0.27.0 \
+      #      pydantic==2.11.9 \
+      #      python-multipart==0.0.20 \
+      #      requests==2.31.0 \
+      #      python-dotenv==1.1.1 \
+      #      pytest==8.3.2 \
+      #      pytest-cov==4.0.0 \
+      #      SQLAlchemy \
+      #      coverage \
+      #      || echo "⚠️ Some packages may have been installed from public PyPI"
+
+      #    echo "✅ Dependencies installed using explicit package list (recommendations pattern)"
+
+
+
+#      - name: "[Build] API image"
+#        env:
+#          JF_PROJECT: ${{ vars.PROJECT_KEY }}
+#          JFROG_CLI_BUILD_PROJECT: ${{ vars.PROJECT_KEY }}
+#        run: |
+#          set -euo pipefail
+#          SERVER_ID="${SETUP_JFROG_CLI_SERVER_IDS:-setup-jfrog-cli-server}"
+#          jf c use "$SERVER_ID" || true
+#
+#          REPO_KEY="${{ vars.PROJECT_KEY }}-$SERVICE_NAME-internal-docker-dev-local"
+#          IMAGE_NAME="${{ vars.DOCKER_REGISTRY }}/$REPO_KEY/$SERVICE_NAME:$IMAGE_TAG"
+#          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+#          echo "Using precomputed image tag: $IMAGE_TAG"
+#
+#          docker build --tag "$IMAGE_NAME" .
+#
+#          # Try modern command first, fallback to deprecated command for older Artifactory versions
+#          echo "🚀 Attempting to push Docker image with build-info..."
+#          if jf docker push "$IMAGE_NAME" \
+#            --build-name "$BUILD_NAME" \
+#            --build-number "$BUILD_NUMBER" \
+#            --project "${{ vars.PROJECT_KEY }}" 2>/dev/null; then
+#            echo "✅ Successfully pushed using modern jf docker push command"
+#          else
+#            echo "⚠️ Modern command failed (likely Artifactory < 7.33.3), using deprecated command..."
+#            jf rt docker-push "$IMAGE_NAME" "$REPO_KEY" \
+#              --build-name "$BUILD_NAME" \
+#              --build-number "$BUILD_NUMBER" \
+#              --project "${{ vars.PROJECT_KEY }}"
+#            echo "✅ Successfully pushed using deprecated jf rt docker-push command"
+#          fi
+#
+#          echo "DOCKER_BUILD_PUSH_STATUS=SUCCESS" >> $GITHUB_ENV
+#          echo "✅ Built, pushed, and associated API Docker image with build-info"
+#
+#      - name: "[Evidence] API Image Package Evidence"
+#        env:
+#          EVIDENCE_PRIVATE_KEY: ${{ secrets.EVIDENCE_PRIVATE_KEY }}
+#          EVIDENCE_KEY_ALIAS: ${{ vars.EVIDENCE_KEY_ALIAS }}
+#          PACKAGE_REPO_STAGE_SUFFIX: dev
+#        run: |
+#          echo "📊 Generating evidence for API image package"
+#
+#          source bookverse-infra/libraries/bookverse-devops/scripts/evidence-lib.sh
+#
+#          export PACKAGE_NAME="checkout"
+#          export PACKAGE_VERSION="$IMAGE_TAG"
+#
+#          attach_docker_package_evidence "$PACKAGE_NAME" "$PACKAGE_VERSION"
+#
+#          echo "✅ API image package evidence attached: pytest-results, sast-scan"
+#
+#      - name: "[Artifacts] OpenAPI spec"
+#        run: |
+#          set -euo pipefail
+#          mkdir -p dist/openapi
+#          python - <<'PY'
+#          import json
+#          from app.main import app
+#          open('dist/openapi/openapi.json','w').write(json.dumps(app.openapi()))
+#          PY
+#
+#          cd dist/openapi
+#          tar -czf "checkout-config-$IMAGE_TAG.tar.gz" openapi.json
+#          cd ../..
+#
+#          GENERIC_REPO="${{ vars.PROJECT_KEY }}-$SERVICE_NAME-internal-generic-dev-local"
+#          jf rt upload "dist/openapi/checkout-config-$IMAGE_TAG.tar.gz" "$GENERIC_REPO/$SERVICE_NAME/config/$IMAGE_TAG/checkout-config-$IMAGE_TAG.tar.gz" \
+#            --build-name "$BUILD_NAME" --build-number "$BUILD_NUMBER" --project "${{ vars.PROJECT_KEY }}"
+#          echo "✅ OpenAPI config package uploaded with version $IMAGE_TAG"
+#
+#      - name: "[Evidence] OpenAPI Package Evidence"
+#        env:
+#          EVIDENCE_PRIVATE_KEY: ${{ secrets.EVIDENCE_PRIVATE_KEY }}
+#          EVIDENCE_KEY_ALIAS: ${{ vars.EVIDENCE_KEY_ALIAS }}
+#          PACKAGE_REPO_STAGE_SUFFIX: dev
+#        run: |
+#          echo "📦 Generating evidence for OpenAPI package"
+#
+#          source bookverse-infra/libraries/bookverse-devops/scripts/evidence-lib.sh
+#
+#          export PACKAGE_NAME="checkout-config-$IMAGE_TAG.tar.gz"
+#          export PACKAGE_VERSION="$IMAGE_TAG"
+#
+#          attach_generic_package_evidence "$PACKAGE_NAME" "$PACKAGE_VERSION"
+#
+#          echo "✅ OpenAPI package evidence attached: config-bundle"
+#
+#      - name: "[Artifacts] Event contract (order.created)"
+#        run: |
+#          set -euo pipefail
+#          mkdir -p dist/contracts
+#
+#          cp contracts/order.created.schema.json dist/contracts/
+#          cd dist/contracts
+#          tar -czf "checkout-resources-$IMAGE_TAG.tar.gz" order.created.schema.json
+#          cd ../..
+#
+#          GENERIC_REPO="${{ vars.PROJECT_KEY }}-$SERVICE_NAME-internal-generic-dev-local"
+#          jf rt upload "dist/contracts/checkout-resources-$IMAGE_TAG.tar.gz" "$GENERIC_REPO/$SERVICE_NAME/resources/$IMAGE_TAG/checkout-resources-$IMAGE_TAG.tar.gz" \
+#            --build-name "$BUILD_NAME" --build-number "$BUILD_NUMBER" --project "${{ vars.PROJECT_KEY }}"
+#          echo "✅ Contract resources package uploaded with version $IMAGE_TAG"
+#
+#      - name: "[Evidence] Contract Package Evidence"
+#        env:
+#          EVIDENCE_PRIVATE_KEY: ${{ secrets.EVIDENCE_PRIVATE_KEY }}
+#          EVIDENCE_KEY_ALIAS: ${{ vars.EVIDENCE_KEY_ALIAS }}
+#          PACKAGE_REPO_STAGE_SUFFIX: dev
+#        run: |
+#          echo "📦 Generating evidence for contract package"
+#
+#          source bookverse-infra/libraries/bookverse-devops/scripts/evidence-lib.sh
+#
+#          export PACKAGE_NAME="checkout-resources-$IMAGE_TAG.tar.gz"
+#          export PACKAGE_VERSION="$IMAGE_TAG"
+#
+#          attach_generic_package_evidence "$PACKAGE_NAME" "$PACKAGE_VERSION"
+#
+#          echo "✅ Contract package evidence attached: config-bundle"
+#
+#      - name: "[Build] Worker image"
+#        env:
+#          JF_PROJECT: ${{ vars.PROJECT_KEY }}
+#          JFROG_CLI_BUILD_PROJECT: ${{ vars.PROJECT_KEY }}
+#        run: |
+#          set -euo pipefail
+#          SERVER_ID="${SETUP_JFROG_CLI_SERVER_IDS:-setup-jfrog-cli-server}"
+#          jf c use "$SERVER_ID" || true
+#
+#          WORKER_NAME="$SERVICE_NAME-worker"
+#          WORKER_TAG="$IMAGE_TAG"
+#          echo "✅ Using unified IMAGE_TAG for worker: $WORKER_TAG"
+#          echo "WORKER_TAG=$WORKER_TAG" >> $GITHUB_ENV
+#
+#          REPO_KEY="${{ vars.PROJECT_KEY }}-$SERVICE_NAME-internal-docker-dev-local"
+#          WORKER_IMAGE="${{ vars.DOCKER_REGISTRY }}/$REPO_KEY/$WORKER_NAME:$WORKER_TAG"
+#          echo "WORKER_IMAGE=$WORKER_IMAGE" >> $GITHUB_ENV
+#
+#          docker build -f Dockerfile.worker --tag "$WORKER_IMAGE" .
+#
+#          # Try modern command first, fallback to deprecated command for older Artifactory versions
+#          echo "🚀 Attempting to push Docker image with build-info..."
+#          if jf docker push "$WORKER_IMAGE" \
+#            --build-name "$BUILD_NAME" \
+#            --build-number "$BUILD_NUMBER" \
+#            --project "${{ vars.PROJECT_KEY }}" 2>/dev/null; then
+#            echo "✅ Successfully pushed using modern jf docker push command"
+#          else
+#            echo "⚠️ Modern command failed (likely Artifactory < 7.33.3), using deprecated command..."
+#            jf rt docker-push "$WORKER_IMAGE" "$REPO_KEY" \
+#              --build-name "$BUILD_NAME" \
+#              --build-number "$BUILD_NUMBER" \
+#              --project "${{ vars.PROJECT_KEY }}"
+#            echo "✅ Successfully pushed using deprecated jf rt docker-push command"
+#          fi
+#
+#          echo "✅ Built, pushed, and associated Worker Docker image with build-info"
+#
+#      - name: "[Evidence] Worker Image Package Evidence"
+#        env:
+#          EVIDENCE_PRIVATE_KEY: ${{ secrets.EVIDENCE_PRIVATE_KEY }}
+#          EVIDENCE_KEY_ALIAS: ${{ vars.EVIDENCE_KEY_ALIAS }}
+#          PACKAGE_REPO_STAGE_SUFFIX: dev
+#        run: |
+#          echo "📊 Generating evidence for Worker image package"
+#
+#          source bookverse-infra/libraries/bookverse-devops/scripts/evidence-lib.sh
+#
+#          export PACKAGE_NAME="checkout-worker"
+#          export PACKAGE_VERSION="$WORKER_TAG"
+#
+#          attach_docker_package_evidence "$PACKAGE_NAME" "$PACKAGE_VERSION"
+#
+#          echo "✅ Worker image package evidence attached: pytest-results, sast-scan"
+#
+#      - name: "[Build] Migrations image"
+#        env:
+#          JF_PROJECT: ${{ vars.PROJECT_KEY }}
+#          JFROG_CLI_BUILD_PROJECT: ${{ vars.PROJECT_KEY }}
+#        run: |
+#          set -euo pipefail
+#          SERVER_ID="${SETUP_JFROG_CLI_SERVER_IDS:-setup-jfrog-cli-server}"
+#          jf c use "$SERVER_ID" || true
+#
+#          MIGR_NAME="$SERVICE_NAME-migrations"
+#          MIGR_TAG="$IMAGE_TAG"
+#          echo "✅ Using unified IMAGE_TAG for migrations: $MIGR_TAG"
+#          echo "MIGR_TAG=$MIGR_TAG" >> $GITHUB_ENV
+#
+#          REPO_KEY="${{ vars.PROJECT_KEY }}-$SERVICE_NAME-internal-docker-dev-local"
+#          REGISTRY_URL="${{ vars.DOCKER_REGISTRY }}"
+#          MIGRATIONS_IMAGE="$REGISTRY_URL/$REPO_KEY/$MIGR_NAME:$MIGR_TAG"
+#          echo "MIGRATIONS_IMAGE=$MIGRATIONS_IMAGE" >> $GITHUB_ENV
+#
+#          docker build -f Dockerfile.migrations --tag "$MIGRATIONS_IMAGE" .
+#
+#          # Try modern command first, fallback to deprecated command for older Artifactory versions
+#          echo "🚀 Attempting to push Docker image with build-info..."
+#          if jf docker push "$MIGRATIONS_IMAGE" \
+#            --build-name "$BUILD_NAME" \
+#            --build-number "$BUILD_NUMBER" \
+#            --project "${{ vars.PROJECT_KEY }}" 2>/dev/null; then
+#            echo "✅ Successfully pushed using modern jf docker push command"
+#          else
+#            echo "⚠️ Modern command failed (likely Artifactory < 7.33.3), using deprecated command..."
+#            jf rt docker-push "$MIGRATIONS_IMAGE" "$REPO_KEY" \
+#              --build-name "$BUILD_NAME" \
+#              --build-number "$BUILD_NUMBER" \
+#              --project "${{ vars.PROJECT_KEY }}"
+#            echo "✅ Successfully pushed using deprecated jf rt docker-push command"
+#          fi
+#
+#          echo "✅ Built, pushed, and associated Migrations Docker image with build-info"
+#
+#      - name: "[Evidence] Migrations Image Package Evidence"
+#        env:
+#          EVIDENCE_PRIVATE_KEY: ${{ secrets.EVIDENCE_PRIVATE_KEY }}
+#          EVIDENCE_KEY_ALIAS: ${{ vars.EVIDENCE_KEY_ALIAS }}
+#          PACKAGE_REPO_STAGE_SUFFIX: dev
+#        run: |
+#          echo "📊 Generating evidence for Migrations image package"
+#
+#          source bookverse-infra/libraries/bookverse-devops/scripts/evidence-lib.sh
+#
+#          export PACKAGE_NAME="checkout-migrations"
+#          export PACKAGE_VERSION="$MIGR_TAG"
+#
+#          attach_docker_package_evidence "$PACKAGE_NAME" "$PACKAGE_VERSION"
+#
+#          echo "✅ Migrations image package evidence attached: pytest-results, sast-scan"
+#
+#      - name: "[Build Info] Publish"
+#        id: publish-build-info
+#        run: |
+#          echo "📦 Publishing build-info with all artifacts and Docker images"
+#
+#          echo "📋 All Docker images already associated with build-info in their build steps:"
+#          echo "   ✅ API image: associated in [Build] API image step"
+#          echo "   ✅ Worker image: associated in [Build] Worker image step"
+#          echo "   ✅ Migrations image: associated in [Build] Migrations image step"
+#
+#          jf rt bag --project "${{ vars.PROJECT_KEY }}" "$BUILD_NAME" "$BUILD_NUMBER"
+#          jf rt bce --project "${{ vars.PROJECT_KEY }}" "$BUILD_NAME" "$BUILD_NUMBER"
+#          if BUILD_PUBLISH_RESULT=$(jf rt bp --project "${{ vars.PROJECT_KEY }}" "$BUILD_NAME" "$BUILD_NUMBER" 2>&1); then
+#            echo "BUILD_INFO_PUBLISH_STATUS=SUCCESS" >> $GITHUB_ENV
+#
+#            BUILD_UI_URL=$(echo "$BUILD_PUBLISH_RESULT" | grep -o 'Browse it in Artifactory under https://[^[:space:]]*' | sed 's/Browse it in Artifactory under //' | head -1 || echo "$BUILD_PUBLISH_RESULT" | grep -o '"buildInfoUiUrl": *"[^"]*"' | sed 's/.*"buildInfoUiUrl": *"\([^"]*\)".*/\1/' | head -1 || echo "")
+#
+#            if [[ -n "$BUILD_UI_URL" ]]; then
+#              EPOCH_MS=$(echo "$BUILD_UI_URL" | sed -n 's|.*/builds/[^/]*/[^/]*/\([0-9]*\)/published.*|\1|p')
+#
+#              if [[ -n "$EPOCH_MS" && "$EPOCH_MS" =~ ^[0-9]+$ ]]; then
+#                EPOCH_SEC=$((EPOCH_MS / 1000))
+#                MILLISECS=$((EPOCH_MS % 1000))
+#                BUILD_STARTED_TIMESTAMP=$(date -u -r "$EPOCH_SEC" "+%Y-%m-%dT%H:%M:%S" 2>/dev/null || date -u -d "@$EPOCH_SEC" "+%Y-%m-%dT%H:%M:%S")
+#                BUILD_STARTED_TIMESTAMP="${BUILD_STARTED_TIMESTAMP}.$(printf "%03d" $MILLISECS)+0000"
+#
+#                echo "build_started_timestamp=$BUILD_STARTED_TIMESTAMP" >> $GITHUB_OUTPUT
+#                echo "✅ Extracted timestamp from build publish result: $BUILD_STARTED_TIMESTAMP"
+#              else
+#                echo "⚠️ Could not extract valid timestamp from UI URL: $BUILD_UI_URL"
+#              fi
+#            else
+#              echo "⚠️ Could not extract build UI URL from publish result"
+#            fi
+#          else
+#            echo "BUILD_INFO_PUBLISH_STATUS=FAILED" >> $GITHUB_ENV
+#            echo "❌ Failed to publish build info" >&2
+#            exit 1
+#          fi
+#
+#      - name: "[Evidence] Build Evidence"
+#        env:
+#          EVIDENCE_PRIVATE_KEY: ${{ secrets.EVIDENCE_PRIVATE_KEY }}
+#          EVIDENCE_KEY_ALIAS: ${{ vars.EVIDENCE_KEY_ALIAS }}
+#        run: |
+#          echo "🏗️ Generating evidence for build-info"
+#
+#          source bookverse-infra/libraries/bookverse-devops/scripts/evidence-lib.sh
+#
+#
+#          attach_build_evidence
+#
+#          echo "✅ Build evidence attached: fossa-license-scan, sonar-quality-gate"
+#
+#  create-promote:
+#    name: "Create Application Version & Promote (Conditional)"
+#    runs-on: ubuntu-latest
+#    needs: [analyze-commit, build-test-publish]
+#    if: needs.analyze-commit.outputs.create_app_version == 'true' && needs.build-test-publish.result == 'success'
+#
+#    permissions:
+#      contents: read
+#      id-token: write
+#
+#    env:
+#      BUILD_NAME: "bookverse-checkout_CI_create-promote"
+#      BUILD_NUMBER: ${{ needs.build-test-publish.outputs.build_number }}
+#      SERVICE_NAME: "checkout"
+#      APPLICATION_KEY: "bookverse-checkout"
+#      APP_VERSION: ${{ needs.build-test-publish.outputs.app_version }}
+#      IMAGE_TAG: ${{ needs.build-test-publish.outputs.app_version }}
+#      BUILD_INFO_REPO: "${{ vars.PROJECT_KEY }}-build-info"
+#      BUILD_STARTED_TIMESTAMP: ${{ needs.build-test-publish.outputs.build_started_timestamp }}
+#      EVIDENCE_PRIVATE_KEY: ${{ secrets.EVIDENCE_PRIVATE_KEY }}
+#      EVIDENCE_KEY_ALIAS: ${{ vars.EVIDENCE_KEY_ALIAS }}
+#      JFROG_URL: ${{ vars.JFROG_URL }}
+#      JF_URL: ${{ vars.JFROG_URL }}
+#      PROJECT_KEY: ${{ vars.PROJECT_KEY }}
+#      STAGES_STR: "DEV QA STAGING PROD"
+#      FINAL_STAGE: "PROD"
+#      ALLOW_RELEASE: "true"
+#
+#    steps:
+#      - name: "[Setup] Checkout"
+#        uses: actions/checkout@v4
+#
+#      - name: "[Setup] Checkout bookverse-infra for shared scripts"
+#        uses: actions/checkout@v4
+#        with:
+#          repository: 'tomjfrog/bookverse-infra'
+#          ref: 'main'
+#          path: bookverse-infra
+#
+#      - name: "[Setup] JFrog CLI"
+#        uses: jfrog/setup-jfrog-cli@v4
+#        id: jfrog-cli-auth
+#        with:
+#          version: 2.88.0
+#          oidc-provider-name: bookverse-checkout-github
+#          oidc-audience: ${{ vars.JFROG_URL }}
+#        env:
+#          JF_URL: ${{ vars.JFROG_URL }}
+#          JF_PROJECT: ${{ vars.PROJECT_KEY }}
+#
+#      - name: "[Setup] Extract OIDC Token for Promotion Job"
+#        id: extract-promotion-token
+#        run: |
+#          echo "🔍 Extracting OIDC token from JFrog CLI step output for promotion job..."
+#
+#          PROMOTION_OIDC_TOKEN="${{ steps.jfrog-cli-auth.outputs.oidc-token }}"
+#          if [[ -n "$PROMOTION_OIDC_TOKEN" && "$PROMOTION_OIDC_TOKEN" != "null" ]]; then
+#            echo "✅ Successfully retrieved OIDC token from JFrog CLI step output (oidc-token)"
+#            echo "📋 Token length: ${#OIDC_TOKEN}"
+#            echo "promotion_oidc_token=$PROMOTION_OIDC_TOKEN" >> $GITHUB_OUTPUT
+#            echo "JF_OIDC_TOKEN=$PROMOTION_OIDC_TOKEN" >> $GITHUB_ENV
+#          else
+#            echo "❌ OIDC token not available from JFrog CLI step output (oidc-token) in promotion job" >&2
+#            exit 1
+#          fi
+#          echo "✅ OIDC token extraction completed using new standard pattern"
+#
+#      - name: "[Setup] Install Python dependencies"
+#        run: |
+#          pip install --user PyYAML setuptools wheel
+#          echo "✅ Python dependencies installed"
+#
+#      - name: "[Setup] Use App Version from Build Job"
+#        id: use-app-version
+#        run: |
+#          APP_VERSION="${{ needs.build-test-publish.outputs.app_version }}"
+#
+#          if [[ -z "$APP_VERSION" ]]; then
+#            echo "❌ Missing app_version from build-test-publish job output" >&2
+#            exit 1
+#          fi
+#
+#          echo "🏷️ Using Application Version from build job: $APP_VERSION"
+#          echo "📋 This version is already associated with the published build info"
+#          echo "APP_VERSION=$APP_VERSION" >> $GITHUB_ENV
+#          echo "app_version=$APP_VERSION" >> $GITHUB_OUTPUT
+#
+#      - name: "[Diag] Build Info contents"
+#        run: |
+#          set -euo pipefail
+#          echo "🔎 Fetching build info to confirm artifacts are present"
+#          ENC_BUILD_NAME=$(printf '%s' "$BUILD_NAME" | jq -sRr @uri)
+#          ENC_BUILD_NUMBER=$(printf '%s' "$BUILD_NUMBER" | jq -sRr @uri)
+#          URL="${{ vars.JFROG_URL }}/artifactory/api/build/${ENC_BUILD_NAME}/${ENC_BUILD_NUMBER}?project=${{ vars.PROJECT_KEY }}"
+#          echo "GET $URL"
+#          curl -sS -H "Authorization: Bearer $JF_OIDC_TOKEN" -H "Accept: application/json" "$URL" \
+#            | jq '.buildInfo.modules // [] | map({id, artifacts: (.artifacts // [] | length)})'
+#
+#      - name: "[Create] Application Version"
+#        run: |
+#          echo "🚀 Creating AppTrust application version: ${{ env.APP_VERSION }}"
+#          echo "📦 Binding artifacts from build-info: ${{ needs.build-test-publish.outputs.build_name }}/${{ needs.build-test-publish.outputs.build_number }}"
+#          echo "🔗 This creates an immutable link between application version and all published artifacts"
+#
+#           if [[ -z "${JF_OIDC_TOKEN:-}" ]]; then
+#             echo "❌ Missing JF_OIDC_TOKEN. Ensure OIDC exchange step succeeded." >&2
+#             exit 1
+#           fi
+#           echo "✅ Using JF_OIDC_TOKEN for AppTrust API authentication"
+#
+#          BASE="${{ vars.JFROG_URL }}/apptrust/api/v1"
+#          APP_KEY="$APPLICATION_KEY"
+#
+#          TAG_OPTIONS=(release hotfix feature bugfix enhancement security performance refactor)
+#          TAG_INDEX=$((${GITHUB_RUN_NUMBER:-0} % ${#TAG_OPTIONS[@]}))
+#          APP_TAG="${TAG_OPTIONS[$TAG_INDEX]}"
+#
+#          ACTUAL_BUILD_NAME="${{ needs.build-test-publish.outputs.build_name }}"
+#
+#          ACTUAL_BUILD_NUMBER="${{ needs.build-test-publish.outputs.build_number }}"
+#          echo "🔧 Using actual build number from first job: $ACTUAL_BUILD_NUMBER"
+#          APP_VERSION_PAYLOAD='{"version":"'$APP_VERSION'","tag":"'$APP_TAG'","sources":{"builds":[{"name":"'$ACTUAL_BUILD_NAME'","number":"'$ACTUAL_BUILD_NUMBER'","repository_key":"'${{ vars.PROJECT_KEY }}'-build-info","include_dependencies":false}]}}'
+#
+#          echo "📋 Creating application version with payload:"
+#          echo "$APP_VERSION_PAYLOAD" | jq . || echo "$APP_VERSION_PAYLOAD"
+#
+#          RESP_BODY=$(mktemp)
+#           HTTP_STATUS=$(curl -sS -L -o "$RESP_BODY" -w "%{http_code}" -X POST \
+#             "$BASE/applications/$APP_KEY/versions?async=false" \
+#             -H "Authorization: Bearer $JF_OIDC_TOKEN" \
+#              -H "Content-Type: application/json" \
+#              -d "$APP_VERSION_PAYLOAD" \
+#            --fail-with-body)
+#
+#          echo "🔢 HTTP Status: $HTTP_STATUS"
+#          echo "📨 Response Body:"
+#          cat "$RESP_BODY" | jq . 2>/dev/null || cat "$RESP_BODY"
+#          echo ""
+#
+#          if [[ "$HTTP_STATUS" -ge 200 && "$HTTP_STATUS" -lt 300 ]]; then
+#            echo "✅ Created application version $APP_VERSION"
+#          else
+#            echo "⚠️ Application version creation returned HTTP $HTTP_STATUS"
+#            if [[ "$HTTP_STATUS" == "409" ]]; then
+#              echo "📝 Version $APP_VERSION already exists, continuing with promotion..."
+#            else
+#              echo "❌ Failed to create application version" >&2
+#          rm -f "$RESP_BODY"
+#              exit 1
+#            fi
+#          fi
+#          rm -f "$RESP_BODY"
+#
+#          echo "🔍 Validating application version creation..."
+#          CONTENT_FILE=$(mktemp)
+#           CONTENT_STATUS=$(curl -sS -L -o "$CONTENT_FILE" -w "%{http_code}" \
+#             "$BASE/applications/$APP_KEY/versions/$APP_VERSION/content" \
+#             -H "Authorization: Bearer $JF_OIDC_TOKEN" \
+#            -H "Accept: application/json")
+#
+#          if [[ "$CONTENT_STATUS" != "200" ]]; then
+#            echo "❌ Version content endpoint returned HTTP $CONTENT_STATUS for $APP_KEY@$APP_VERSION" >&2
+#            echo "📨 Response Body:"; cat "$CONTENT_FILE" || true; echo
+#            rm -f "$CONTENT_FILE"
+#            exit 1
+#          fi
+#          VERSION_STATE=$(jq -r '.status // empty' "$CONTENT_FILE" 2>/dev/null || echo "")
+#          echo "📨 Version Content:"; cat "$CONTENT_FILE" || true; echo
+#          rm -f "$CONTENT_FILE"
+#          if [[ "$VERSION_STATE" != "COMPLETED" ]]; then
+#            echo "❌ Application version not in COMPLETED state (status='$VERSION_STATE') for $APP_KEY@$APP_VERSION" >&2
+#            exit 1
+#          fi
+#          echo "✅ Application version created and validated (COMPLETED): $APP_KEY@$APP_VERSION"
+#
+#      - name: "[Evidence] Application Version Evidence"
+#        env:
+#          EVIDENCE_PRIVATE_KEY: ${{ secrets.EVIDENCE_PRIVATE_KEY }}
+#          EVIDENCE_KEY_ALIAS: ${{ vars.EVIDENCE_KEY_ALIAS }}
+#        run: |
+#          echo "📋 Generating evidence for application version (UNASSIGNED stage)"
+#
+#          source bookverse-infra/libraries/bookverse-devops/scripts/evidence-lib.sh
+#
+#
+#          attach_application_unassigned_evidence
+#
+#          echo "✅ Application version evidence attached: slsa-provenance, jira-release"
+#
+#      - name: "[Promote & Evidence] DEV Stage"
+#        run: |
+#          echo "🚀 Promoting to DEV stage and generating evidence"
+#
+#           if [[ -z "${JF_OIDC_TOKEN:-}" ]]; then
+#             echo "❌ Missing JF_OIDC_TOKEN. Ensure OIDC exchange step succeeded." >&2
+#             exit 1
+#           fi
+#           echo "✅ Using JF_OIDC_TOKEN for DEV promotion"
+#
+#          source bookverse-infra/libraries/bookverse-devops/scripts/evidence-lib.sh
+#          setup_promotion_environment
+#
+#          if advance_one_step; then
+#            echo "✅ Successfully promoted to DEV"
+#          else
+#            echo "❌ Failed to promote to DEV"
+#            exit 1
+#          fi
+#
+#          attach_application_dev_evidence
+#          echo "✅ DEV stage evidence attached: smoke-tests"
+#
+#      - name: "[Promote & Evidence] QA Stage"
+#        run: |
+#          echo "🔍 Promoting to QA stage and generating evidence"
+#
+#           if [[ -z "${JF_OIDC_TOKEN:-}" ]]; then
+#             echo "❌ Missing JF_OIDC_TOKEN. Ensure OIDC exchange step succeeded." >&2
+#             exit 1
+#           fi
+#           echo "✅ Using JF_OIDC_TOKEN for QA promotion"
+#
+#          source bookverse-infra/libraries/bookverse-devops/scripts/evidence-lib.sh
+#          setup_promotion_environment
+#
+#          if advance_one_step; then
+#            echo "✅ Successfully promoted to QA"
+#          else
+#            echo "❌ Failed to promote to QA"
+#            exit 1
+#          fi
+#
+#          attach_application_qa_evidence
+#          echo "✅ QA stage evidence attached: dast-scan, api-tests"
+#
+#      - name: "[Promote & Evidence] STAGING Stage"
+#        run: |
+#          echo "🏗️ Promoting to STAGING stage and generating evidence"
+#
+#           if [[ -z "${JF_OIDC_TOKEN:-}" ]]; then
+#             echo "❌ Missing JF_OIDC_TOKEN. Ensure OIDC exchange step succeeded." >&2
+#             exit 1
+#           fi
+#           echo "✅ Using JF_OIDC_TOKEN for STAGING promotion"
+#
+#          source bookverse-infra/libraries/bookverse-devops/scripts/evidence-lib.sh
+#          setup_promotion_environment
+#
+#            if advance_one_step; then
+#            echo "✅ Successfully promoted to STAGING"
+#            else
+#            echo "❌ Failed to promote to STAGING"
+#              exit 1
+#            fi
+#
+#          attach_application_staging_evidence
+#          echo "✅ STAGING stage evidence attached: iac-scan, pentest, change-approval"
+#
+#      - name: "[Promote & Evidence] PROD Stage"
+#        run: |
+#          echo "🚀 Promoting to PROD stage and generating evidence"
+#
+#           if [[ -z "${JF_OIDC_TOKEN:-}" ]]; then
+#             echo "❌ Missing JF_OIDC_TOKEN. Ensure OIDC exchange step succeeded." >&2
+#             exit 1
+#           fi
+#           echo "✅ Using JF_OIDC_TOKEN for PROD promotion"
+#
+#          source bookverse-infra/libraries/bookverse-devops/scripts/evidence-lib.sh
+#          setup_promotion_environment
+#
+#          if advance_one_step; then
+#            echo "✅ Successfully promoted to PROD"
+#          else
+#            echo "❌ Failed to promote to PROD"
+#            exit 1
+#          fi
+#
+#          attach_application_prod_evidence
+#          echo "✅ PROD stage evidence attached: deployment-verification"
+#
+#          source bookverse-infra/libraries/bookverse-devops/scripts/promote-lib.sh
+#          fetch_summary
+#          echo "RELEASE_STATUS=${RELEASE_STATUS:-}" >> $GITHUB_ENV
+#
+#          echo "🎉 SUCCESS: Application version $APP_VERSION promoted to PROD with all evidence attached!"
+#
+#      - name: "[Tags] Self-Healing Tag Management"
+#        env:
+#          JFROG_URL: ${{ vars.JFROG_URL }}
+#          PROJECT_KEY: ${{ vars.PROJECT_KEY }}
+#          APPLICATION_KEY: ${{ env.APPLICATION_KEY }}
+#        run: |
+#          set -euo pipefail
+#          echo "🏥 Running self-healing tag management for PROD release"
+#
+#          if [[ "${RELEASE_STATUS:-}" != "RELEASED" && "${RELEASE_STATUS:-}" != "TRUSTED_RELEASE" ]]; then
+#            echo "ℹ️ Skipping tag management; not a successful PROD release (status: ${RELEASE_STATUS:-UNKNOWN})"
+#            exit 0
+#          fi
+#
+#          echo "✅ PROD release successful, running comprehensive tag validation and healing"
+#
+#          source bookverse-infra/libraries/bookverse-devops/scripts/tag-management-lib.sh
+#
+#          validate_and_heal_tags
+#
+#          echo ""
+#          echo "🎯 Tag management completed for version $APP_VERSION"
+#          echo "📋 All versions now have correct tags based on their states:"
+#          echo "   - 'latest': Highest SemVer version in PROD"
+#          echo "   - 'quarantine': Versions that were rolled back"
+#          echo "   - 'valid': Other valid SemVer versions"
+#          echo "   - Non-SemVer versions: No special tags (ignored for 'latest')"
+#
+#      - name: "📊 Enhanced Build Summary (bookverse-devops pattern)"
+#        if: always()
+#        run: |
+#          echo "## Build Section" >> $GITHUB_STEP_SUMMARY
+#          echo "" >> $GITHUB_STEP_SUMMARY
+#          echo "## Build Section" >> $GITHUB_STEP_SUMMARY
+#          echo "- **Service:** checkout" >> $GITHUB_STEP_SUMMARY
+#          echo "- **Build Name:** $BUILD_NAME" >> $GITHUB_STEP_SUMMARY
+#          echo "- **Build Number:** $BUILD_NUMBER" >> $GITHUB_STEP_SUMMARY
+#          echo "- **Application Version:** ${APP_VERSION:-'N/A'}" >> $GITHUB_STEP_SUMMARY
+#          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+#          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+#          echo "" >> $GITHUB_STEP_SUMMARY
+#
+#          echo "## Build Section" >> $GITHUB_STEP_SUMMARY
+#          echo "- **Job 1 (analyze-commit):** ✅ Completed" >> $GITHUB_STEP_SUMMARY
+#          echo "- **Job 2 (build-test-publish):** ✅ Completed" >> $GITHUB_STEP_SUMMARY
+#          if [[ "${{ needs.analyze-commit.outputs.create_app_version }}" == "true" ]]; then
+#            echo "- **Job 3 (create-promote):** ✅ Completed" >> $GITHUB_STEP_SUMMARY
+#          else
+#            echo "- **Job 3 (create-promote):** ⏭️ Skipped (build-info only)" >> $GITHUB_STEP_SUMMARY
+#          fi
+#          echo "" >> $GITHUB_STEP_SUMMARY
+#
+#          echo "## Build Section" >> $GITHUB_STEP_SUMMARY
+#          echo "- **Test Coverage:** ${COVERAGE_PERCENT:-'N/A'}%" >> $GITHUB_STEP_SUMMARY
+#          echo "- **Docker Images:**" >> $GITHUB_STEP_SUMMARY
+#          echo "  - 📦 checkout: \`${IMAGE_NAME:-'N/A'}\`" >> $GITHUB_STEP_SUMMARY
+#          echo "  - 🔧 checkout-worker: \`${WORKER_IMAGE:-'N/A'}\`" >> $GITHUB_STEP_SUMMARY
+#          echo "  - 🗃️ checkout-migrations: \`${MIGRATIONS_IMAGE:-'N/A'}\`" >> $GITHUB_STEP_SUMMARY
+#          echo "- **Generic Artifacts:**" >> $GITHUB_STEP_SUMMARY
+#          echo "  - ⚙️ checkout-config: \`v${IMAGE_TAG:-'N/A'}\`" >> $GITHUB_STEP_SUMMARY
+#          echo "  - 📚 checkout-resources: \`v${IMAGE_TAG:-'N/A'}\`" >> $GITHUB_STEP_SUMMARY
+#          echo "- **Evidence Artifacts:** ✅ Collected and uploaded" >> $GITHUB_STEP_SUMMARY
+#          echo "- **Build-Info:** ✅ Published with all artifacts" >> $GITHUB_STEP_SUMMARY
+#          echo "" >> $GITHUB_STEP_SUMMARY
+#
+#          echo "## Build Section" >> $GITHUB_STEP_SUMMARY
+#          echo "- **UNASSIGNED → DEV:** ✅ SLSA Provenance + Jira Release → Smoke Tests" >> $GITHUB_STEP_SUMMARY
+#          echo "- **DEV → QA:** ✅ DAST Scan + API Tests" >> $GITHUB_STEP_SUMMARY
+#          echo "- **QA → STAGING:** ✅ IaC Scan + Pentest + Change Approval" >> $GITHUB_STEP_SUMMARY
+#          echo "- **STAGING → PROD:** ✅ Deployment Verification" >> $GITHUB_STEP_SUMMARY
+#          echo "" >> $GITHUB_STEP_SUMMARY
+#
+#          echo "## Build Section" >> $GITHUB_STEP_SUMMARY
+#          echo "- **bookverse-core:** ✅ Dependency management & testing" >> $GITHUB_STEP_SUMMARY
+#          echo "- **bookverse-devops:** ✅ Evidence collection & patterns" >> $GITHUB_STEP_SUMMARY
+#          echo "- **Consolidated Environment:** ✅ Centralized JFrog setup" >> $GITHUB_STEP_SUMMARY
+#          echo "- **Stage-Specific Evidence:** ✅ Proper evidence attachment per stage" >> $GITHUB_STEP_SUMMARY
+#          echo "" >> $GITHUB_STEP_SUMMARY
+#
+#          if [[ "${{ needs.analyze-commit.outputs.create_app_version }}" == "true" ]]; then
+#            echo "## Final Status" >> $GITHUB_STEP_SUMMARY
+#            echo "Application version **${APP_VERSION:-'N/A'}** has been created and promoted to PROD." >> $GITHUB_STEP_SUMMARY
+#            echo "All required evidence has been attached at each promotion stage." >> $GITHUB_STEP_SUMMARY
+#          else
+#            echo "## Fallback Info" >> $GITHUB_STEP_SUMMARY
+#            echo "This commit created build-info artifacts only (no application version)." >> $GITHUB_STEP_SUMMARY
+#            echo "Use manual workflow dispatch with \`force_app_version=true\` to create an application version." >> $GITHUB_STEP_SUMMARY
+#          fi
+#
+#          echo "✅ Enhanced summary generated using bookverse-devops patterns"
+#

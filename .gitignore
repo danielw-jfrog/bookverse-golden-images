@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Moar
+.idea
+
+# Specific files in this project that shouldn't be commited
+dockerfile-base
