@@ -80,7 +80,7 @@ jobs:
 
       - name: Process Dockerfile Template
         env:
-          TEMPLATE_FROM_IMAGE: library/alpine
+          TEMPLATE_FROM_IMAGE: alpine
           TEMPLATE_FROM_REPO: "${{ vars.PROJECT_KEY }}-docker-remote"
           TEMPLATE_FROM_TAG: 3.24
         run: |
