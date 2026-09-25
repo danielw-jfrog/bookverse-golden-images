@@ -91,7 +91,7 @@ jobs:
           TO_REPO: "${{ vars.PROJECT_KEY }}-golden-internal-docker-dev-local"
           TO_IMAGE: "golden-images/base"
           # FIXME: Use a better tag, something like yyyymmdd-run_number
-          TO_TAG: "${BUILD_NUMBER}"
+          TO_TAG: "${{ github.run_number }}-${{ github.run_attempt }}"
         run: |
           jf docker build -t "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}:${TO_TAG}" -f dockerfile-base .
           jf docker push "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}:${TO_TAG}" --build-name="${BUILD_NAME}" --build-number="${BUILD_NUMBER}"
