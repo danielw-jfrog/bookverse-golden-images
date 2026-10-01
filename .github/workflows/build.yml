@@ -37,10 +37,10 @@ jobs:
       # FIXME: Validate these permissions
       contents: read  # Repository content access for source code
       id-token: write # OIDC token generation for JFrog authentication
-    env:
+    #env:
       #BUILD_NAME: "${{ github.event.repository.name }}_${{ github.workflow }}_${{ github.job }}"
-      BUILD_NAME: "${{ github.event.repository.name }}_build-image_${{ github.job }}"
-      BUILD_NUMBER: "${{ github.run_number }}-${{ github.run_attempt }}"
+      #BUILD_NAME: "${{ github.event.repository.name }}_build-image_${{ github.job }}"
+      #BUILD_NUMBER: "${{ github.run_number }}-${{ github.run_attempt }}"
     #outputs:
       # FIXME: Validate these outputs
       #build_name: ${{ steps.set-build-info.outputs.build_name }}
@@ -56,6 +56,9 @@ jobs:
         id: strings
         run: |
           echo "::set-output name=date::$(date +'%Y%m%d')"
+          #BUILD_NAME: "${{ github.event.repository.name }}_${{ github.workflow }}_${{ github.job }}"
+          echo "::set-output name=build_name::{{ github.event.repository.name }}_build-image_${{ github.job }}"
+          echo "::set-output name=build_num::$(date +'%Y%m%d').${{ github.run_number }}.${{ github.run_attempt }}"
 
       # FIXME: Get this to pull from Artifactory via a pypi remote repository
       - name: Configure Python
@@ -73,6 +76,9 @@ jobs:
           oidc-audience: ${{ vars.JFROG_URL }}
 
       - name: Install the Python dependencies
+        env:
+          BUILD_NAME: "${{ steps.strings.outputs.build_name }}"
+          BUILD_NUMBER: "${{ steps.strings.outputs.build_num }}"
         run: |
           jf pip-config --repo-resolve "bvgi-pypi-remote"
           jf pip install -r requirements.txt --build-name="${BUILD_NAME}" --build-number="${BUILD_NUMBER}"
@@ -94,21 +100,68 @@ jobs:
 
       - name: Build and push the Image
         env:
+          BUILD_NAME: "${{ steps.strings.outputs.build_name }}"
+          BUILD_NUMBER: "${{ steps.strings.outputs.build_num }}"
           TO_REPO: "${{ vars.PROJECT_KEY }}-golden-internal-docker-dev-local"
           TO_IMAGE: "golden-images/base"
-          TO_TAG: "${{ steps.strings.outputs.date }}.${{ github.run_number }}.${{ github.run_attempt }}"
+          TO_TAG: "${{ steps.strings.outputs.build_num }}"
         run: |
           jf docker build -t "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}:${TO_TAG}" -f dockerfile-base .
           jf docker push "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}:${TO_TAG}" --build-name="${BUILD_NAME}" --build-number="${BUILD_NUMBER}"
 
       - name: Gather the Environment and Push Build Info
+        env:
+          BUILD_NAME: "${{ steps.strings.outputs.build_name }}"
+          BUILD_NUMBER: "${{ steps.strings.outputs.build_num }}"
         run: |
           jf rt build-publish "${BUILD_NAME}" "${BUILD_NUMBER}" --collect-env --env-exclude "*password*;*secret*;*key*;*token*;*auth*" --collect-git-info --dot-git-path .
 
-# Gather deps and envs for build info
-# Build Info
+# Evidences for Artifacts
+# Evidences for Build Info
+
 # Application Version
-# Evidences
+      - name: Create Application Version
+        env:
+          APP_KEY: "golden-images-base"
+          APP_VERSION: "${{ steps.strings.outputs.build_num }}"
+          BUILD_NAME: "${{ steps.strings.outputs.build_name }}"
+          BUILD_NUMBER: "${{ steps.strings.outputs.build_num }}"
+        run: |
+          APP_VERSION_PAYLOAD='{"version":"'${APP_VERSION}'","tag":"release","sources":{"builds":[{"name":"'${BUILD_NAME}'","number":"'${BUILD_NUMBER}'","repository_key":"'${{ vars.PROJECT_KEY }}'-build-info","include_dependencies":false}]}}'
+          # Not quite sure what this is trying to accomplish, but we'll keep it for the printz
+          echo "${APP_VERSION_PAYLOAD}" | jq . || echo "${APP_VERSION_PAYLOAD}"
+
+          # FIXME: Should this be converted to a quick little python script?  This is from the old stuff.
+          RESP_BODY=$(mktemp)
+          HTTP_STATUS=$(curl -sS -L -o "$RESP_BODY" -w "%{http_code}" -X POST \
+              "${{ vars.JFROG_URL }}/apptrust/api/v1/applications/${APP_KEY}/versions?async=false" \
+              -H "Authorization: Bearer $JF_OIDC_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "$APP_VERSION_PAYLOAD" \
+              --fail-with-body)
+
+          echo "HTTP Status: $HTTP_STATUS"
+          echo "Response Body:"
+          cat "$RESP_BODY" | jq . 2>/dev/null || cat "$RESP_BODY"
+          echo ""
+
+          if [[ "$HTTP_STATUS" -ge 200 && "$HTTP_STATUS" -lt 300 ]]; then
+              echo "✅ Created application version $APP_VERSION"
+          else
+              echo "⚠️ Application version creation returned HTTP $HTTP_STATUS"
+              if [[ "$HTTP_STATUS" == "409" ]]; then
+                  echo "📝 Version $APP_VERSION already exists, continuing with promotion..."
+              else
+                  echo "❌ Failed to create application version" >&2
+                  rm -f "$RESP_BODY"
+                  exit 1
+              fi
+          fi
+          rm -f "$RESP_BODY"
+
+# Evidences for Application
+
+# Where does the Xray Scan results go?
 
       #- name: "[Info] Trigger Information"
       #  run: |
