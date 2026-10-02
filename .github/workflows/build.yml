@@ -125,40 +125,42 @@ jobs:
           APP_VERSION: "${{ steps.strings.outputs.build_num }}"
           BUILD_NAME: "${{ steps.strings.outputs.build_name }}"
           BUILD_NUMBER: "${{ steps.strings.outputs.build_num }}"
+          JFROG_ACCESS_TOKEN: "${{ steps.jfrog-cli-auth.outputs.oidc-token }}"
           OIDC_TOKEN: "${{ steps.jfrog-cli-auth.outputs.oidc-token }}"
         run: |
-          APP_VERSION_PAYLOAD='{"version":"'${APP_VERSION}'","tag":"release","sources":{"builds":[{"name":"'${BUILD_NAME}'","number":"'${BUILD_NUMBER}'","repository_key":"'${{ vars.PROJECT_KEY }}'-build-info","include_dependencies":false}]}}'
-          # Not quite sure what this is trying to accomplish, but we'll keep it for the printz
-          echo "URL: ${{ vars.JFROG_URL }}/apptrust/api/v1/applications/${APP_KEY}/versions?async=false"
-          echo "${APP_VERSION_PAYLOAD}" | jq . || echo "${APP_VERSION_PAYLOAD}"
+          #APP_VERSION_PAYLOAD='{"version":"'${APP_VERSION}'","tag":"release","sources":{"builds":[{"name":"'${BUILD_NAME}'","number":"'${BUILD_NUMBER}'","repository_key":"'${{ vars.PROJECT_KEY }}'-build-info","include_dependencies":false}]}}'
+          ## Not quite sure what this is trying to accomplish, but we'll keep it for the printz
+          #echo "URL: ${{ vars.JFROG_URL }}/apptrust/api/v1/applications/${APP_KEY}/versions?async=false"
+          #echo "${APP_VERSION_PAYLOAD}" | jq . || echo "${APP_VERSION_PAYLOAD}"
 
-          # FIXME: Should this be converted to a quick little python script?  This is from the old stuff.
-          RESP_BODY=$(mktemp)
-          HTTP_STATUS=$(curl -sS -L -o "$RESP_BODY" -w "%{http_code}" -X POST \
-              "${{ vars.JFROG_URL }}/apptrust/api/v1/applications/${APP_KEY}/versions?async=false" \
-              -H "Authorization: Bearer ${OIDC_TOKEN}" \
-              -H "Content-Type: application/json" \
-              -d "${APP_VERSION_PAYLOAD}" \
-              --fail-with-body)
+          ## FIXME: Should this be converted to a quick little python script?  This is from the old stuff.
+          #RESP_BODY=$(mktemp)
+          #HTTP_STATUS=$(curl -sS -L -o "$RESP_BODY" -w "%{http_code}" -X POST \
+          #    "${{ vars.JFROG_URL }}/apptrust/api/v1/applications/${APP_KEY}/versions?async=false" \
+          #    -H "Authorization: Bearer ${OIDC_TOKEN}" \
+          #    -H "Content-Type: application/json" \
+          #    -d "${APP_VERSION_PAYLOAD}" \
+          #    --fail-with-body)
 
-          echo "HTTP Status: $HTTP_STATUS"
-          echo "Response Body:"
-          cat "$RESP_BODY" | jq . 2>/dev/null || cat "$RESP_BODY"
-          echo ""
+          #echo "HTTP Status: $HTTP_STATUS"
+          #echo "Response Body:"
+          #cat "$RESP_BODY" | jq . 2>/dev/null || cat "$RESP_BODY"
+          #echo ""
 
-          if [[ "$HTTP_STATUS" -ge 200 && "$HTTP_STATUS" -lt 300 ]]; then
-              echo "✅ Created application version $APP_VERSION"
-          else
-              echo "⚠️ Application version creation returned HTTP $HTTP_STATUS"
-              if [[ "$HTTP_STATUS" == "409" ]]; then
-                  echo "📝 Version $APP_VERSION already exists, continuing with promotion..."
-              else
-                  echo "❌ Failed to create application version" >&2
-                  rm -f "$RESP_BODY"
-                  exit 1
-              fi
-          fi
-          rm -f "$RESP_BODY"
+          #if [[ "$HTTP_STATUS" -ge 200 && "$HTTP_STATUS" -lt 300 ]]; then
+          #    echo "✅ Created application version $APP_VERSION"
+          #else
+          #    echo "⚠️ Application version creation returned HTTP $HTTP_STATUS"
+          #    if [[ "$HTTP_STATUS" == "409" ]]; then
+          #        echo "📝 Version $APP_VERSION already exists, continuing with promotion..."
+          #    else
+          #        echo "❌ Failed to create application version" >&2
+          #        rm -f "$RESP_BODY"
+          #        exit 1
+          #    fi
+          #fi
+          #rm -f "$RESP_BODY"
+          python create_application_version.py "${APP_KEY}" "${APP_VERSION}"
 
 # Evidences for Application
 
