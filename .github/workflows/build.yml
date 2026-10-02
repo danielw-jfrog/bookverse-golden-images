@@ -126,6 +126,7 @@ jobs:
           APP_VERSION: "${{ steps.strings.outputs.build_num }}"
           BUILD_NAME: "${{ steps.strings.outputs.build_name }}"
           BUILD_NUMBER: "${{ steps.strings.outputs.build_num }}"
+          OIDC_TOKEN: "${{ steps.jfrog-cli-auth.outputs.oidc-token }}"
         run: |
           APP_VERSION_PAYLOAD='{"version":"'${APP_VERSION}'","tag":"release","sources":{"builds":[{"name":"'${BUILD_NAME}'","number":"'${BUILD_NUMBER}'","repository_key":"'${{ vars.PROJECT_KEY }}'-build-info","include_dependencies":false}]}}'
           # Not quite sure what this is trying to accomplish, but we'll keep it for the printz
@@ -135,9 +136,9 @@ jobs:
           RESP_BODY=$(mktemp)
           HTTP_STATUS=$(curl -sS -L -o "$RESP_BODY" -w "%{http_code}" -X POST \
               "${{ vars.JFROG_URL }}/apptrust/api/v1/applications/${APP_KEY}/versions?async=false" \
-              -H "Authorization: Bearer $JF_OIDC_TOKEN" \
+              -H "Authorization: Bearer ${OIDC_TOKEN}" \
               -H "Content-Type: application/json" \
-              -d "$APP_VERSION_PAYLOAD" \
+              -d "${APP_VERSION_PAYLOAD}" \
               --fail-with-body)
 
           echo "HTTP Status: $HTTP_STATUS"
