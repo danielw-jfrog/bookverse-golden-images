@@ -57,7 +57,7 @@ jobs:
         run: |
           echo "::set-output name=date::$(date +'%Y%m%d')"
           #BUILD_NAME: "${{ github.event.repository.name }}_${{ github.workflow }}_${{ github.job }}"
-          echo "::set-output name=build_name::{{ github.event.repository.name }}_build-image_${{ github.job }}"
+          echo "::set-output name=build_name::${{ github.event.repository.name }}_build-image_${{ github.job }}"
           echo "::set-output name=build_num::$(date +'%Y%m%d').${{ github.run_number }}.${{ github.run_attempt }}"
 
       # FIXME: Get this to pull from Artifactory via a pypi remote repository
@@ -71,7 +71,6 @@ jobs:
         id: jfrog-cli-auth
         with:
           version: 2.121.0
-          # FIXME: This needs to be updated for one for the golden images
           oidc-provider-name: bvgi-golden-images-github
           oidc-audience: ${{ vars.JFROG_URL }}
 
