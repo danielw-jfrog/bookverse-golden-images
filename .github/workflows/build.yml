@@ -129,6 +129,7 @@ jobs:
         run: |
           APP_VERSION_PAYLOAD='{"version":"'${APP_VERSION}'","tag":"release","sources":{"builds":[{"name":"'${BUILD_NAME}'","number":"'${BUILD_NUMBER}'","repository_key":"'${{ vars.PROJECT_KEY }}'-build-info","include_dependencies":false}]}}'
           # Not quite sure what this is trying to accomplish, but we'll keep it for the printz
+          echo "URL: ${{ vars.JFROG_URL }}/apptrust/api/v1/applications/${APP_KEY}/versions?async=false"
           echo "${APP_VERSION_PAYLOAD}" | jq . || echo "${APP_VERSION_PAYLOAD}"
 
           # FIXME: Should this be converted to a quick little python script?  This is from the old stuff.
