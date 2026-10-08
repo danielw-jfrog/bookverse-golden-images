@@ -6,9 +6,8 @@ concurrency:
 
 # FIXME: Add a cron job to build this every so often (maybe once a week?)
 on:
-  #push:
-  #  branches: [main]
-
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       reason:
