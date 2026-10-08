@@ -161,7 +161,7 @@ jobs:
           #    fi
           #fi
           #rm -f "$RESP_BODY"
-          python create_application_version.py "${APP_KEY}" "${APP_VERSION}"
+          python create_application_version.py --verbose "${APP_KEY}" "${APP_VERSION}"
 
 # Evidences for Application
 
