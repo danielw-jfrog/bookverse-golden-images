@@ -68,8 +68,7 @@ def create_application_version(login_data, application_key, version, version_tag
                 "repository_key": build_info_repository,
                 "include_dependencies": False
             }]
-        },
-        "skip_unassigned": True
+        }
     }
     make_api_request(login_data, 'POST', req_url, req_data)
 
