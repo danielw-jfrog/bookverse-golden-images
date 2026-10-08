@@ -87,7 +87,7 @@ jobs:
         run: |
           jf docker build -t "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}:${TO_TAG}" -f dockerfile-base .
           IMAGE_DIGEST=$(docker inspect --format '{{.Id}}' "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}:${TO_TAG}")
-          echo "::set-output name=image_digest::${IMAGE_DIGEST}
+          echo "::set-output name=image_digest::${IMAGE_DIGEST}"
           jf docker push "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}:${TO_TAG}" --build-name="${BUILD_NAME}" --build-number="${BUILD_NUMBER}"
 
       - name: Generate Artifact Attestation for Docker Image
