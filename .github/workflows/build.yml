@@ -27,7 +27,7 @@ env:
   JFROG_URL: ${{ vars.JFROG_URL }}
   GH_TOKEN: ${{ secrets.GH_TOKEN }}
   GH_REPOSITORY_OWNER: ${{ github.repository_owner }}
-  JF_PROJECT: ${{ vars.PROJECT_KEY }}
+  PROJECT_KEY: ${{ vars.PROJECT_KEY }}
 
 jobs:
   build-base-image:
