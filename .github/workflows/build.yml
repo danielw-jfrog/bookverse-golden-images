@@ -118,7 +118,6 @@ jobs:
 # Evidences for Artifacts
 # Evidences for Build Info
 
-# Application Version
       - name: Create Application Version
         env:
           APP_KEY: "golden-images-base"
@@ -161,6 +160,15 @@ jobs:
           #fi
           #rm -f "$RESP_BODY"
           python create_application_version.py "${APP_KEY}" "${APP_VERSION}"
+
+      - name: Promote Application Version to Dev Stage
+        env:
+          APP_KEY: "golden-images-base"
+          APP_VERSION: "${{ steps.strings.outputs.build_num }}"
+          JFROG_ACCESS_TOKEN: "${{ steps.jfrog-cli-auth.outputs.oidc-token }}"
+          OIDC_TOKEN: "${{ steps.jfrog-cli-auth.outputs.oidc-token }}"
+        run: |
+          python promote_application_version.py "${APP_KEY}" "${APP_VERSION}" "bvgi-DEV"
 
 # Evidences for Application
 
