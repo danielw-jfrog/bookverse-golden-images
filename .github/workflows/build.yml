@@ -92,6 +92,8 @@ jobs:
           echo "image_digest = ${IMAGE_DIGEST}"
           echo "image_digest_two = ${IMAGE_DIGEST_TWO}"
           
+          docker inspect "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}:${TO_TAG}"
+          
           jf docker push "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}" --build-name="${{ env.BUILD_NAME }}" --build-number="${{ env.BUILD_NUMBER }}"
 
       - name: Generate Artifact Attestation (SLSA) for Docker Image
