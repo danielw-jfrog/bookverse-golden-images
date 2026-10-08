@@ -85,10 +85,10 @@ jobs:
           TO_IMAGE: "golden-images/base"
           TO_TAG: "${{ steps.strings.outputs.build_num }}"
         run: |
-          jf docker build -t "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}:${TO_TAG}" -f dockerfile-base .
+          jf docker build -t "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}" -f dockerfile-base .
           IMAGE_DIGEST=$(docker inspect --format '{{.Id}}' "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}:${TO_TAG}")
-          echo "::set-output name=image_digest::${IMAGE_DIGEST}"
-          jf docker push "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}:${TO_TAG}" --build-name="${BUILD_NAME}" --build-number="${BUILD_NUMBER}"
+          echo "name=image_digest::${IMAGE_DIGEST}" >> $GITHUB_OUTPUT
+          jf docker push "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}" --build-name="${{ env.BUILD_NAME }}" --build-number="${{ env.BUILD_NUMBER }}"
 
       - name: Generate Artifact Attestation for Docker Image
         uses: actions/attest@v4
@@ -97,7 +97,7 @@ jobs:
           TO_IMAGE: "golden-images/base"
           #TO_TAG: "${{ steps.strings.outputs.build_num }}"
         with:
-          subject-name: "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}"
+          subject-name: "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}"
           subject-digest: "${{ steps.basebuild.outputs.image_digest }}"
 
       - name: Gather the Environment and Push Build Info
