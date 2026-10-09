@@ -86,6 +86,8 @@ jobs:
           TO_TAG: "${{ steps.strings.outputs.build_num }}"
         run: |
           jf docker build -t "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}" -f dockerfile-base .
+          jf docker push "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}" --build-name="${{ env.BUILD_NAME }}" --build-number="${{ env.BUILD_NUMBER }}"
+          
           IMAGE_DIGEST=$(docker inspect --format '{{.Id}}' "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}")
           IMAGE_DIGEST_TWO=$(docker images --format '{{.Digest}}' "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}")
           echo "image_digest=${IMAGE_DIGEST}" >> $GITHUB_OUTPUT
@@ -97,8 +99,6 @@ jobs:
           
           echo "Docker Manifest Inspect:"
           docker manifest inspect "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}"
-          
-          jf docker push "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}" --build-name="${{ env.BUILD_NAME }}" --build-number="${{ env.BUILD_NUMBER }}"
 
       - name: Generate Artifact Attestation (SLSA) for Docker Image
         uses: actions/attest@v4
