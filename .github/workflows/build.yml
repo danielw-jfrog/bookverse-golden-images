@@ -86,13 +86,17 @@ jobs:
           TO_TAG: "${{ steps.strings.outputs.build_num }}"
         run: |
           jf docker build -t "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}" -f dockerfile-base .
-          IMAGE_DIGEST=$(docker inspect --format '{{.Id}}' "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}:${TO_TAG}")
-          IMAGE_DIGEST_TWO=$(docker images --format '{{.Digest}}' "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}:${TO_TAG}")
+          IMAGE_DIGEST=$(docker inspect --format '{{.Id}}' "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}")
+          IMAGE_DIGEST_TWO=$(docker images --format '{{.Digest}}' "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}")
           echo "image_digest=${IMAGE_DIGEST}" >> $GITHUB_OUTPUT
           echo "image_digest = ${IMAGE_DIGEST}"
           echo "image_digest_two = ${IMAGE_DIGEST_TWO}"
           
-          docker inspect "${{ vars.DOCKER_REGISTRY }}/${TO_REPO}/${TO_IMAGE}:${TO_TAG}"
+          echo "Docker Image Inspect:"
+          docker inspect "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}"
+          
+          echo "Docker Manifest Inspect:"
+          docker manifest inspect "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}"
           
           jf docker push "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}" --build-name="${{ env.BUILD_NAME }}" --build-number="${{ env.BUILD_NUMBER }}"
 
