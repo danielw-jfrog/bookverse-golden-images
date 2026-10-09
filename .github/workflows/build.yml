@@ -101,7 +101,7 @@ jobs:
           docker manifest inspect "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}"
           
           echo "Trying RepoDigest:"
-          IMAGE_INSPECT=$(docker inspect --format '{{.RepoDigests 0}}' "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}")
+          IMAGE_INSPECT=$(docker inspect --format '{{index .RepoDigests 0}}' "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}")
           echo "  RepoDigest: ${IMAGE_INSPECT}"
           IFS='@'; arrIN=($IMAGE_INSPECT); unset IFS;
           IMAGE_BARE_DIGEST=${arrIN[1]}
