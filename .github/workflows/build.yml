@@ -99,6 +99,13 @@ jobs:
           
           echo "Docker Manifest Inspect:"
           docker manifest inspect "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}"
+          
+          echo "Trying RepoDigest:"
+          IMAGE_INSPECT=$(docker inspect --format '{{.RepoDigest 0}}' "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}")
+          echo "  RepoDigest: ${IMAGE_INSPECT}"
+          IFS='@'; arrIN=($IMAGE_INSPECT); unset IFS;
+          IMAGE_BARE_DIGEST=${arrIN[1]}
+          echo "  Bare Digest: ${IMAGE_BARE_DIGEST}
 
       - name: Generate Artifact Attestation (SLSA) for Docker Image
         uses: actions/attest@v4
