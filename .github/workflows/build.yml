@@ -34,10 +34,10 @@ jobs:
       - name: Prepare Strings
         id: strings
         run: |
-          echo "::set-output name=date::$(date +'%Y%m%d')"
+          echo "date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
           #BUILD_NAME: "${{ github.event.repository.name }}_${{ github.workflow }}_${{ github.job }}"
-          echo "::set-output name=build_name::${{ github.event.repository.name }}_build-image_${{ github.job }}"
-          echo "::set-output name=build_num::$(date +'%Y%m%d').${{ github.run_number }}.${{ github.run_attempt }}"
+          echo "build_name=${{ github.event.repository.name }}_build-image_${{ github.job }}" >> $GITHUB_OUTPUT
+          echo "build_num=$(date +'%Y%m%d').${{ github.run_number }}.${{ github.run_attempt }}" >> $GITHUB_OUTPUT
 
       # FIXME: Get this to pull from Artifactory via a pypi remote repository
       - name: Configure Python
@@ -104,6 +104,7 @@ jobs:
 
       - name: Generate Artifact Attestation (SLSA) for Docker Image
         uses: actions/attest@v4
+        id: genslsa
         env:
           BUILD_NAME: "${{ steps.strings.outputs.build_name }}"
           BUILD_NUMBER: "${{ steps.strings.outputs.build_num }}"
@@ -113,6 +114,7 @@ jobs:
         with:
           subject-name: "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}"
           subject-digest: "${{ steps.basebuild.outputs.image_digest }}"
+          push-to-registry: true
 
       #- name: Upload SLSA Evidence
       #  run: |
