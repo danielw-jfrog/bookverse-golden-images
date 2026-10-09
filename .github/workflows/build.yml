@@ -88,12 +88,6 @@ jobs:
           jf docker build -t "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}" -f dockerfile-base .
           jf docker push "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}" --build-name="${{ env.BUILD_NAME }}" --build-number="${{ env.BUILD_NUMBER }}"
           
-          IMAGE_DIGEST=$(docker inspect --format '{{.Id}}' "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}")
-          IMAGE_DIGEST_TWO=$(docker images --format '{{.Digest}}' "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}")
-          echo "image_digest=${IMAGE_DIGEST}" >> $GITHUB_OUTPUT
-          echo "image_digest = ${IMAGE_DIGEST}"
-          echo "image_digest_two = ${IMAGE_DIGEST_TWO}"
-          
           echo "Docker Image Inspect:"
           docker inspect "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}"
           
@@ -104,8 +98,9 @@ jobs:
           IMAGE_INSPECT=$(docker inspect --format '{{index .RepoDigests 0}}' "${{ vars.DOCKER_REGISTRY }}/${{ env.TO_REPO }}/${{ env.TO_IMAGE }}:${{ env.TO_TAG }}")
           echo "  RepoDigest: ${IMAGE_INSPECT}"
           IFS='@'; arrIN=($IMAGE_INSPECT); unset IFS;
-          IMAGE_BARE_DIGEST=${arrIN[1]}
-          echo "  Bare Digest: ${IMAGE_BARE_DIGEST}"
+          IMAGE_DIGEST=${arrIN[1]}
+          echo "  Bare Digest: ${IMAGE_DIGEST}"
+          echo "image_digest=${IMAGE_DIGEST}" >> $GITHUB_OUTPUT
 
       - name: Generate Artifact Attestation (SLSA) for Docker Image
         uses: actions/attest@v4
